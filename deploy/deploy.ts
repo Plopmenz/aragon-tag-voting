@@ -58,7 +58,12 @@ export async function deploy(
     ],
   });
 
-  return {
+  const deployment = {
     tagVotingSetup: tagVotingSetup,
   };
+  await deployer.saveDeployment({
+    deploymentName: "latest.json",
+    deployment: deployment,
+  });
+  return deployment;
 }
