@@ -1,65 +1,86 @@
-import { AbiItem, Address, DeployInfo, Deployer } from "../web3webdeploy/types";
+import { Address, Deployer } from "../web3webdeploy/types";
 import {
   getNetworkDeploymentForVersion,
+  NetworkDeployment,
   SupportedNetworks,
   SupportedVersions,
 } from "../lib/osx-commons/configs/src";
-import { parseAbiItem } from "../web3webdeploy/node_modules/viem";
+import {
+  DeployTagVotingSetupSettings,
+  deployTagVotingSetup,
+} from "./plugin/TagVotingSetup";
+import {
+  CreateTagVotingRepoSettings,
+  createTagVotingRepo,
+} from "./plugin/TagVotingRepo";
 
-export interface TagVotingDeploymentSettings
-  extends Omit<DeployInfo, "contract" | "args"> {}
+export interface TagVotingDeploymentSettings {
+  aragonDeployment?: NetworkDeployment;
+  tagVotingSetupSettings: DeployTagVotingSetupSettings;
+  tagVotingRepoSettings: Omit<
+    CreateTagVotingRepoSettings,
+    "pluginRepoFactory" | "pluginRepoRegistry" | "tagVotingSetup"
+  >;
+  forceRedeploy?: boolean;
+}
 
 export interface TagVotingDeployment {
   tagVotingSetup: Address;
+  tagVotingRepo: Address;
 }
 
 export async function deploy(
   deployer: Deployer,
   settings?: TagVotingDeploymentSettings
 ): Promise<TagVotingDeployment> {
-  const tagVotingSetup = await deployer.deploy({
-    id: "TagVotingSetup",
-    contract: "TagVotingSetup",
-    ...settings,
-  });
-
-  const aragonDeployment = getNetworkDeploymentForVersion(
-    SupportedNetworks.MUMBAI,
-    SupportedVersions.V1_3_0
-  );
-  if (!aragonDeployment) {
-    throw new Error("Aragon deployment not found");
+  if (settings?.forceRedeploy !== undefined && !settings.forceRedeploy) {
+    return await deployer.loadDeployment({ deploymentName: "latest.json" });
   }
-  const pluginRepoFactoryAbi: AbiItem[] = [
-    parseAbiItem(
-      "function createPluginRepoWithFirstVersion(string calldata _subdomain,address _pluginSetup,address _maintainer,bytes memory _releaseMetadata,bytes memory _buildMetadata) external"
-    ),
-  ].map((item) => {
-    return {
-      ...item,
-      inputs: [
-        ...item.inputs.map((input) => {
-          return { ...input, internalType: input.type };
-        }),
-      ],
-      outputs: [...item.outputs],
-    };
-  });
-  await deployer.execute({
-    abi: pluginRepoFactoryAbi,
-    to: aragonDeployment.PluginRepoFactory.address as Address,
-    function: "createPluginRepoWithFirstVersion",
-    args: [
-      "plugin-7583279532",
-      tagVotingSetup,
-      "0xaF7E68bCb2Fc7295492A00177f14F59B92814e70",
-      "0x01",
-      "0x01",
-    ],
+
+  const tagVotingSetup = await deployTagVotingSetup(
+    deployer,
+    settings?.tagVotingSetupSettings ?? {}
+  );
+
+  let aragonDeployment = settings?.aragonDeployment;
+  if (!aragonDeployment) {
+    let aragonNetwork: SupportedNetworks;
+    const chainId = deployer.settings.defaultChainId;
+    switch (chainId) {
+      case 1:
+        aragonNetwork = SupportedNetworks.MAINNET;
+        break;
+      case 137:
+        aragonNetwork = SupportedNetworks.POLYGON;
+        break;
+      case 11155111:
+        aragonNetwork = SupportedNetworks.SEPOLIA;
+        break;
+      default:
+        throw new Error(`Unknown Aragon deployment for network ${chainId}`);
+    }
+    aragonDeployment =
+      getNetworkDeploymentForVersion(aragonNetwork, SupportedVersions.V1_3_0) ??
+      undefined;
+    if (!aragonDeployment) {
+      throw new Error("Aragon deployment not found");
+    }
+  }
+
+  const tagVotingRepo = await createTagVotingRepo(deployer, {
+    pluginRepoFactory: aragonDeployment.PluginRepoFactory.address as Address,
+    pluginRepoRegistry: aragonDeployment.PluginRepoRegistryProxy
+      .address as Address,
+    tagVotingSetup: tagVotingSetup,
+    ...(settings?.tagVotingRepoSettings ?? {
+      subdomain: "tag-voting",
+      maintainer: deployer.settings.defaultFrom,
+    }),
   });
 
   const deployment = {
     tagVotingSetup: tagVotingSetup,
+    tagVotingRepo: tagVotingRepo,
   };
   await deployer.saveDeployment({
     deploymentName: "latest.json",
