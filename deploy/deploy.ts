@@ -8,11 +8,11 @@ import {
 import {
   DeployTagVotingSetupSettings,
   deployTagVotingSetup,
-} from "./plugin/TagVotingSetup";
+} from "./internal/TagVotingSetup";
 import {
   CreateTagVotingRepoSettings,
   createTagVotingRepo,
-} from "./plugin/TagVotingRepo";
+} from "./internal/TagVotingRepo";
 
 export interface TagVotingDeploymentSettings {
   aragonDeployment?: NetworkDeployment;
