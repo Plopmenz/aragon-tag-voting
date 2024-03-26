@@ -14,6 +14,7 @@ export async function createTagVotingRepo(
   settings: CreateTagVotingRepoSettings
 ): Promise<Address> {
   const { receipt } = await deployer.execute({
+    id: "TagVotingRepo",
     abi: [...pluginRepoFactoryAbi],
     to: settings.pluginRepoFactory,
     function: "createPluginRepoWithFirstVersion",
