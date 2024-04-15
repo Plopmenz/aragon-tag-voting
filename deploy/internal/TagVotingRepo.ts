@@ -25,6 +25,7 @@ export async function createTagVotingRepo(
       "0x01",
       "0x01",
     ],
+    ...settings,
   });
 
   const events = await deployer.getEvents({
